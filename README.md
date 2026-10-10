@@ -10,10 +10,10 @@ The project is based on the MIT-licensed [Screenlite Android Web Kiosk](https://
 | --- | --- |
 | Build | Debug and signed release builds pass. `lintDebug`, `lintVitalRelease`, and the orientation unit tests pass. |
 | Identity | Project `ots-web-kiosk`, package `com.ontimestack.webkiosk`, installed name `OTS Kiosk`. |
-| UI | First-run setup, Settings, PIN, Admin Menu, launcher icon, and TV banner use the OnTimeStack cube mark and the OTS **Cyber Minimal Dark** palette adapted from `ots-storybook`. |
+| UI | First-run setup, Settings, PIN, launcher icon, and TV banner use the OnTimeStack cube mark and the OTS **Cyber Minimal Dark** palette adapted from `ots-storybook`. Remote-focused controls use a high-contrast cyan focus ring. |
 | WebView | HTTPS, JavaScript, cookies, web storage, redirects, media playback, geolocation, and render-process recovery implemented. |
 | Touch and rotation | Manual View transforms were removed. The WebView, native screens, keyboard, and touch surface now share the Android display coordinate system. |
-| Native-screen rotation | Setup, Settings, loading/error states, Admin PIN/Menu, Change PIN, WebView, and keyboard follow the selected real 0°/90°/180°/270° orientation. |
+| Native-screen rotation | Setup, Settings, loading/error states, Admin PIN, Change PIN, WebView, and keyboard follow the selected real 0°/90°/180°/270° orientation. |
 | Network recovery | Wi-Fi loss and reconnection validated in the AVD; the page reloads after connectivity returns. |
 | Admin access | Short Back is consumed. A physical Back press of approximately two seconds, or Android's native long-press event, opens the PIN dialog. |
 | Boot | `BOOT_COMPLETED` reached the app and started its foreground service in the legacy API 31 AVD, but Android 12 blocked the background Activity launch. |
@@ -26,6 +26,7 @@ The project is based on the MIT-licensed [Screenlite Android Web Kiosk](https://
 - Screen kept awake while an Activity is running.
 - Touch, mouse, keyboard, pointer, swipe, scroll, drag, and standard WebView input are not disabled on TV devices.
 - Real Android orientation keeps the WebView, native OTS screens, dialogs, keyboard, and touch coordinates in the same coordinate space.
+- On Android TV, the selected rotation is active only while an OTS Kiosk screen is visible. Leaving, minimizing, switching apps, or choosing **Exit Kiosk** restores the system to landscape so the Google TV launcher never receives an unsupported portrait resolution such as `1080x1920`.
 - Android TV/Google TV display rotation uses one-time **Modify system settings** access because TV firmware otherwise letterboxes portrait Activities and rescales touch coordinates.
 - Automatic reload uses bounded exponential backoff and reacts to real network changes without pinging an external health-check service.
 - WebView renderer failure recreates the WebView safely.
@@ -38,9 +39,10 @@ While the Home Page is visible:
 1. A short Back press does nothing.
 2. Hold the physical Back button for approximately two seconds.
 3. Enter the Admin PIN.
-4. Choose **Settings**, **Exit Kiosk**, or **Cancel**.
+4. After successful validation, Settings opens directly. The intermediate Admin Menu was removed.
+5. Choose **Exit Kiosk**, **Cancel**, or **Save changes** from Settings.
 
-Settings and Exit Kiosk are unavailable before successful PIN validation. Entering the PIN dialog, Android permission UI, or Settings temporarily suspends foreground recovery. Returning to the kiosk enables it again.
+Settings and Exit Kiosk are unavailable before successful PIN validation. While the PIN or Settings UI is open, WebView focus and accessibility traversal are disabled and focus is contained in the administrative UI. Entering the PIN dialog, Android permission UI, or Settings temporarily suspends foreground recovery. Returning to the kiosk enables it again.
 
 On first launch, the app requires the Home Page URL, rotation, PIN creation/confirmation, and both kiosk toggles before it can start.
 
@@ -50,9 +52,10 @@ Form validation is applied before saving:
 - Admin PIN is required and accepts only 4 to 12 digits.
 - PIN confirmation is required and must exactly match the first PIN field.
 - Errors appear below the corresponding field and the first invalid field is brought into view and focused.
-- Opening a form focuses its first editable field so it can be completed with only a TV remote or keyboard.
-- The software keyboard uses **Next** between related fields. **Done** submits the Admin PIN and PIN-change dialogs, while the first-run form closes the keyboard so its remaining device options can be reviewed before saving.
-- A failed submission returns focus to the first invalid field and keeps the software keyboard available.
+- Opening Settings focuses the Home Page control without opening the editor or software keyboard. Press **OK** on a field to edit it; directional navigation remains available while the field is only focused.
+- The software keyboard uses **Next** between related fields. **Done** submits the Admin PIN dialog or returns the Settings field to navigation mode.
+- A failed submission brings the first invalid field into view and focuses it without forcing the keyboard open.
+- Buttons, orientation choices, editable-field launchers, and the full toggle row receive a high-contrast cyan focus ring. Pressing **OK** anywhere on a focused toggle row changes its value.
 
 ## Visible settings
 
@@ -63,6 +66,7 @@ The Settings screen intentionally exposes only:
 - Change Admin PIN
 - Open on Device Startup
 - Keep App in Foreground
+- Exit Kiosk
 
 ## Provision rotation on Android TV
 
@@ -118,7 +122,7 @@ References: [Embed web content in an app](https://developer.android.com/develop/
 
 ## Mizz self-service startup error
 
-The message **“Não foi possível iniciar o autoatendimento. Verifique a conexão e tente novamente.”** was produced by `mizz-ui` when `supabase.auth.signInAnonymously()` was rejected by the production Auth configuration. It was not a `localStorage` or OTS Kiosk failure.
+The message **“Não foi possível iniciar o autoatendimento. Verifique a conexão e tente novamente.”** was produced by `mizz-app` when `supabase.auth.signInAnonymously()` was rejected by the production Auth configuration. It was not a `localStorage` or OTS Kiosk failure.
 
 This production configuration was corrected on 2026-09-15. Anonymous Auth sessions are enabled for the kiosk, while a Before User Created Auth Hook continues to reject permanent self-service signups. RLS and server-action guards prevent anonymous users from enumerating profiles, creating establishments, joining staff/admin flows, or using upload endpoints. Kiosk checkout still requires the revocable device credential and creates orders through the validated server boundary. The complete flow was revalidated in the API 36/WebView 143 AVD without the startup error.
 
@@ -184,12 +188,12 @@ $HOME/Library/Android/sdk/emulator/emulator @OTS_Kiosk_Google_TV_API_36
 The broader interaction validation below was performed across this AVD and the legacy `OTS_Kiosk_Google_TV_API_31` AVD. The Mizz activation compatibility check was specifically performed on API 36/WebView 143:
 
 - installation and first-run setup;
-- PIN rejection, unlock, Admin Menu, and Settings;
-- remote-only Admin PIN entry, initial field focus, directional action navigation, and retained focus after validation errors;
+- PIN rejection, direct PIN-to-Settings unlock, Settings, and Exit Kiosk;
+- remote-only Admin PIN entry, contained administrative focus, initial non-editing field focus, directional action navigation, visible button/toggle focus, and retained focus after validation errors;
 - short and long Back behavior;
 - Cyber Minimal Dark interface;
 - OnTimeStack launcher/UI branding;
-- real display rotation for Setup, Settings, Change PIN, Admin PIN/Menu, WebView, keyboard, and loading/error states;
+- real display rotation for Setup, Settings, Change PIN, Admin PIN, WebView, keyboard, and loading/error states;
 - required-field, invalid HTTPS URL, PIN-length, PIN-confirmation, first-error focus, and keyboard Next/Done form behavior;
 - tap navigation in the Mizz WebView and native input focus with the real 90° display coordinate system;
 - functional `localStorage`, `sessionStorage`, and IndexedDB plus browser-API availability from inside the WebView;

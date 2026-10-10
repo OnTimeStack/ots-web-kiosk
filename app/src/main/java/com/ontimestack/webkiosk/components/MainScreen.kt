@@ -8,12 +8,13 @@ import com.ontimestack.webkiosk.MainActivity
 import com.ontimestack.webkiosk.data.KioskSettingsFactory
 
 @Composable
-fun MainScreen(activity: MainActivity, modifier: Modifier) {
+fun MainScreen(activity: MainActivity, interactive: Boolean, modifier: Modifier) {
     val context = LocalContext.current
     val settings = remember { KioskSettingsFactory.get(context) }
     WebViewComponent(
         url = settings.homePageUrl,
         activity = activity,
+        interactive = interactive,
         modifier = modifier
     )
 }

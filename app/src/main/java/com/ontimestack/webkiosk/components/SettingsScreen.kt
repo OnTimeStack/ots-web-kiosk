@@ -3,6 +3,7 @@ package com.ontimestack.webkiosk.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -19,6 +21,7 @@ import androidx.compose.foundation.relocation.BringIntoViewRequester
 import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -39,10 +42,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -50,6 +56,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ontimestack.webkiosk.R
 import com.ontimestack.webkiosk.data.KioskSettings
@@ -64,7 +72,8 @@ fun SettingsScreen(
     firstRun: Boolean,
     orientationNotice: String?,
     onRotationChange: (Rotation) -> Unit,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    onExitKiosk: () -> Unit
 ) {
     val context = LocalContext.current
     val settings = remember { KioskSettingsFactory.get(context) }
@@ -99,7 +108,6 @@ fun SettingsScreen(
 
     LaunchedEffect(Unit) {
         urlFocus.requestFocus()
-        keyboardController?.show()
     }
 
     LaunchedEffect(errorFieldTarget) {
@@ -107,17 +115,14 @@ fun SettingsScreen(
             SettingsFieldTarget.URL -> {
                 urlBringIntoView.bringIntoView()
                 urlFocus.requestFocus()
-                keyboardController?.show()
             }
             SettingsFieldTarget.PIN -> {
                 setupPinBringIntoView.bringIntoView()
                 setupPinFocus.requestFocus()
-                keyboardController?.show()
             }
             SettingsFieldTarget.PIN_CONFIRMATION -> {
                 setupPinConfirmationBringIntoView.bringIntoView()
                 setupPinConfirmationFocus.requestFocus()
-                keyboardController?.show()
             }
             null -> return@LaunchedEffect
         }
@@ -146,29 +151,22 @@ fun SettingsScreen(
                 title = "Home page",
                 description = "Secure HTTPS address loaded when the kiosk starts."
             ) {
-                OutlinedTextField(
+                RemoteTextField(
                     value = homePageUrl,
                     onValueChange = {
                         homePageUrl = it
                         urlError = null
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .bringIntoViewRequester(urlBringIntoView)
-                        .focusRequester(urlFocus),
-                    label = { Text("Home Page URL") },
-                    placeholder = { Text(KioskSettings.DEFAULT_HOME_PAGE_URL) },
-                    supportingText = urlError?.let { message -> ({ Text(message) }) },
-                    isError = urlError != null,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Uri,
-                        imeAction = if (firstRun) ImeAction.Next else ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onNext = { setupPinFocus.requestFocus() },
-                        onDone = { dismissKeyboard() }
-                    ),
-                    singleLine = true
+                    focusRequester = urlFocus,
+                    modifier = Modifier.bringIntoViewRequester(urlBringIntoView),
+                    label = "Home Page URL",
+                    placeholder = KioskSettings.DEFAULT_HOME_PAGE_URL,
+                    error = urlError,
+                    keyboardType = KeyboardType.Uri,
+                    imeAction = if (firstRun) ImeAction.Next else ImeAction.Done,
+                    onImeAction = {
+                        if (firstRun) setupPinFocus.requestFocus() else dismissKeyboard()
+                    }
                 )
             }
 
@@ -204,9 +202,8 @@ fun SettingsScreen(
                         label = "Create Admin PIN",
                         value = setupPin,
                         error = setupPinError,
-                        modifier = Modifier
-                            .bringIntoViewRequester(setupPinBringIntoView)
-                            .focusRequester(setupPinFocus),
+                        focusRequester = setupPinFocus,
+                        modifier = Modifier.bringIntoViewRequester(setupPinBringIntoView),
                         imeAction = ImeAction.Next,
                         onImeAction = { setupPinConfirmationFocus.requestFocus() },
                         onValueChange = {
@@ -220,9 +217,8 @@ fun SettingsScreen(
                         label = "Confirm Admin PIN",
                         value = setupPinConfirmation,
                         error = setupPinConfirmationError,
-                        modifier = Modifier
-                            .bringIntoViewRequester(setupPinConfirmationBringIntoView)
-                            .focusRequester(setupPinConfirmationFocus),
+                        focusRequester = setupPinConfirmationFocus,
+                        modifier = Modifier.bringIntoViewRequester(setupPinConfirmationBringIntoView),
                         imeAction = ImeAction.Done,
                         onImeAction = dismissKeyboard,
                         onValueChange = {
@@ -233,7 +229,9 @@ fun SettingsScreen(
                 } else {
                     OutlinedButton(
                         onClick = { showPinChangeDialog = true },
-                        modifier = Modifier.height(52.dp),
+                        modifier = Modifier
+                            .height(52.dp)
+                            .otsFocusHighlight(),
                         shape = MaterialTheme.shapes.medium,
                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
                     ) {
@@ -276,10 +274,24 @@ fun SettingsScreen(
                 verticalAlignment = Alignment.CenterVertically
                 ) {
                 if (!firstRun) {
+                    OutlinedButton(
+                        enabled = !saving,
+                        onClick = onExitKiosk,
+                        modifier = Modifier
+                            .height(52.dp)
+                            .otsFocusHighlight(),
+                        shape = MaterialTheme.shapes.medium,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) { Text("Exit Kiosk") }
                     TextButton(
                         enabled = !saving,
                         onClick = onClose,
-                        modifier = Modifier.height(52.dp)
+                        modifier = Modifier
+                            .height(52.dp)
+                            .otsFocusHighlight()
                     ) { Text("Cancel") }
                 }
                 Button(
@@ -339,7 +351,9 @@ fun SettingsScreen(
                             onClose()
                         }
                     },
-                    modifier = Modifier.height(52.dp),
+                    modifier = Modifier
+                        .height(52.dp)
+                        .otsFocusHighlight(),
                     shape = MaterialTheme.shapes.medium,
                     contentPadding = ButtonDefaults.ContentPadding
                 ) {
@@ -453,8 +467,27 @@ private fun ToggleSetting(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    var focused by remember { mutableStateOf(false) }
+    val focusColor = MaterialTheme.colorScheme.secondary
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.hasFocus }
+            .border(
+                width = if (focused) 3.dp else 1.dp,
+                color = if (focused) focusColor else Color.Transparent,
+                shape = MaterialTheme.shapes.medium
+            )
+            .background(
+                color = if (focused) focusColor.copy(alpha = 0.14f) else Color.Transparent,
+                shape = MaterialTheme.shapes.medium
+            )
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -473,7 +506,7 @@ private fun ToggleSetting(
         }
         Switch(
             checked = checked,
-            onCheckedChange = onCheckedChange,
+            onCheckedChange = null,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                 checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -490,31 +523,145 @@ private fun PinField(
     label: String,
     value: String,
     error: String?,
+    focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
     imeAction: ImeAction,
     onImeAction: () -> Unit,
     onValueChange: (String) -> Unit
 ) {
-    OutlinedTextField(
+    RemoteTextField(
         value = value,
         onValueChange = { candidate ->
             if (candidate.length <= 12 && candidate.all(Char::isDigit)) onValueChange(candidate)
         },
-        modifier = modifier.fillMaxWidth(),
-        label = { Text(label) },
-        supportingText = error?.let { message -> ({ Text(message) }) },
-        isError = error != null,
+        focusRequester = focusRequester,
+        modifier = modifier,
+        label = label,
+        placeholder = "Press OK to edit",
+        error = error,
         visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.NumberPassword,
-            imeAction = imeAction
-        ),
-        keyboardActions = KeyboardActions(
-            onNext = { onImeAction() },
-            onDone = { onImeAction() }
-        ),
-        singleLine = true
+        keyboardType = KeyboardType.NumberPassword,
+        imeAction = imeAction,
+        onImeAction = onImeAction
     )
+}
+
+@Composable
+private fun RemoteTextField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    focusRequester: FocusRequester,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    error: String? = null,
+    visualTransformation: VisualTransformation = VisualTransformation.None,
+    keyboardType: KeyboardType,
+    imeAction: ImeAction,
+    onImeAction: () -> Unit
+) {
+    var editing by remember(label) { mutableStateOf(false) }
+    var editorHadFocus by remember(label) { mutableStateOf(false) }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(editing) {
+        if (editing) {
+            withFrameNanos { }
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        }
+    }
+
+    if (editing) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = modifier
+                .fillMaxWidth()
+                .focusRequester(focusRequester)
+                .onFocusChanged { state ->
+                    if (state.isFocused) {
+                        editorHadFocus = true
+                    } else if (editorHadFocus) {
+                        editorHadFocus = false
+                        editing = false
+                        keyboardController?.hide()
+                    }
+                }
+                .otsFocusHighlight(MaterialTheme.shapes.small),
+            label = { Text(label) },
+            supportingText = error?.let { message -> ({ Text(message) }) },
+            isError = error != null,
+            visualTransformation = visualTransformation,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = keyboardType,
+                imeAction = imeAction
+            ),
+            keyboardActions = KeyboardActions(
+                onNext = {
+                    editing = false
+                    keyboardController?.hide()
+                    onImeAction()
+                },
+                onDone = {
+                    editing = false
+                    keyboardController?.hide()
+                    onImeAction()
+                }
+            ),
+            singleLine = true
+        )
+    } else {
+        val displayValue = when {
+            value.isBlank() -> placeholder.orEmpty()
+            visualTransformation is PasswordVisualTransformation -> "•".repeat(value.length)
+            else -> value
+        }
+        Surface(
+            onClick = {
+                editorHadFocus = false
+                editing = true
+            },
+            modifier = modifier
+                .fillMaxWidth()
+                .heightIn(min = 72.dp)
+                .focusRequester(focusRequester)
+                .otsFocusHighlight(MaterialTheme.shapes.small),
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = BorderStroke(
+                1.dp,
+                if (error == null) MaterialTheme.colorScheme.outline
+                else MaterialTheme.colorScheme.error
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = label,
+                    color = if (error == null) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Text(
+                    text = displayValue,
+                    color = if (value.isBlank()) MaterialTheme.colorScheme.onSurfaceVariant
+                    else MaterialTheme.colorScheme.onSurface,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                error?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -537,12 +684,10 @@ private fun ChangePinDialog(
     }
     val requestPinFocus = {
         pinFocus.requestFocus()
-        keyboardController?.show()
         Unit
     }
     val requestConfirmationFocus = {
         confirmationFocus.requestFocus()
-        keyboardController?.show()
         Unit
     }
     val submitPinChange = submit@{
@@ -594,7 +739,7 @@ private fun ChangePinDialog(
                     label = "New Admin PIN",
                     value = pin,
                     error = pinError,
-                    modifier = Modifier.focusRequester(pinFocus),
+                    focusRequester = pinFocus,
                     imeAction = ImeAction.Next,
                     onImeAction = { requestConfirmationFocus() },
                     onValueChange = {
@@ -607,7 +752,7 @@ private fun ChangePinDialog(
                     label = "Confirm Admin PIN",
                     value = confirmation,
                     error = confirmationError,
-                    modifier = Modifier.focusRequester(confirmationFocus),
+                    focusRequester = confirmationFocus,
                     imeAction = ImeAction.Done,
                     onImeAction = { submitPinChange() },
                     onValueChange = {
@@ -618,9 +763,13 @@ private fun ChangePinDialog(
             }
         },
         actions = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.otsFocusHighlight()
+            ) { Text("Cancel") }
             Button(
                 shape = MaterialTheme.shapes.medium,
+                modifier = Modifier.otsFocusHighlight(),
                 onClick = { submitPinChange() }
             ) { Text("Change PIN") }
         }

@@ -27,7 +27,11 @@ class KioskApplication : Application() {
             }
 
             override fun onActivityStarted(activity: Activity) = Unit
-            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) {
+                if (resumedActivities == 0) {
+                    ScreenOrientationController.restoreTelevisionLandscape(this@KioskApplication)
+                }
+            }
             override fun onActivitySaveInstanceState(activity: Activity, state: Bundle) = Unit
             override fun onActivityDestroyed(activity: Activity) = Unit
         })

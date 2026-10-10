@@ -3,7 +3,6 @@ package com.ontimestack.webkiosk
 import android.annotation.SuppressLint
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -13,7 +12,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -21,14 +19,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,13 +45,13 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import com.ontimestack.webkiosk.app.FullScreenHelper
 import com.ontimestack.webkiosk.app.KioskRuntime
 import com.ontimestack.webkiosk.app.ScreenOrientationController
 import com.ontimestack.webkiosk.app.StayOnTopServiceStarter
 import com.ontimestack.webkiosk.components.MainScreen
 import com.ontimestack.webkiosk.components.KioskDialog
+import com.ontimestack.webkiosk.components.otsFocusHighlight
 import com.ontimestack.webkiosk.data.KioskSettingsFactory
 import com.ontimestack.webkiosk.service.StayOnTopService
 import com.ontimestack.webkiosk.ui.theme.OtsKioskTheme
@@ -70,13 +65,17 @@ class MainActivity : ComponentActivity() {
     private var adminScreen by mutableStateOf(AdminScreen.NONE)
     private var pendingGeolocationRequest: PendingGeolocationRequest? = null
 
-    private val openSettings = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        KioskRuntime.adminMode = false
-        if (!settings.isConfigured) {
-            finishAndRemoveTask()
+    private val openSettings = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == SettingsActivity.RESULT_EXIT_KIOSK) {
+            exitKiosk()
         } else {
-            updateForegroundService()
-            recreate()
+            KioskRuntime.adminMode = false
+            if (!settings.isConfigured) {
+                finishAndRemoveTask()
+            } else {
+                updateForegroundService()
+                recreate()
+            }
         }
     }
 
@@ -116,7 +115,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             OtsKioskTheme {
                 if (settings.isConfigured) {
-                    MainScreen(activity = this, modifier = Modifier.fillMaxSize())
+                    MainScreen(
+                        activity = this,
+                        interactive = adminScreen == AdminScreen.NONE,
+                        modifier = Modifier.fillMaxSize()
+                    )
                 }
                 AdminDialogs(
                     screen = adminScreen,
@@ -126,7 +129,7 @@ class MainActivity : ComponentActivity() {
                         KioskRuntime.adminMode = it != AdminScreen.NONE
                         if (it == AdminScreen.NONE) updateForegroundService()
                     },
-                    onSettings = {
+                    onUnlocked = {
                         adminScreen = AdminScreen.NONE
                         KioskRuntime.adminMode = true
                         stopService(Intent(this, StayOnTopService::class.java))
@@ -134,8 +137,7 @@ class MainActivity : ComponentActivity() {
                             Intent(this, SettingsActivity::class.java)
                                 .putExtra(SettingsActivity.EXTRA_FIRST_RUN, false)
                         )
-                    },
-                    onExit = ::exitKiosk
+                    }
                 )
             }
         }
@@ -151,6 +153,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        ScreenOrientationController.apply(this, settings.rotation)
         FullScreenHelper.enableImmersiveMode(window)
         if (settings.isConfigured && !KioskRuntime.adminMode) updateForegroundService()
     }
@@ -223,6 +226,7 @@ class MainActivity : ComponentActivity() {
         KioskRuntime.exitRequested = true
         KioskRuntime.adminMode = false
         stopService(Intent(this, StayOnTopService::class.java))
+        ScreenOrientationController.restoreTelevisionLandscape(this)
         finishAndRemoveTask()
     }
 
@@ -237,22 +241,20 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private enum class AdminScreen { NONE, PIN, MENU }
+private enum class AdminScreen { NONE, PIN }
 
 @Composable
 private fun AdminDialogs(
     screen: AdminScreen,
     verifyPin: (CharArray) -> Boolean,
     onScreenChange: (AdminScreen) -> Unit,
-    onSettings: () -> Unit,
-    onExit: () -> Unit
+    onUnlocked: () -> Unit
 ) {
     var pin by remember(screen) { mutableStateOf("") }
     var pinError by remember(screen) { mutableStateOf<String?>(null) }
     var verifyingPin by remember(screen) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val pinFocus = remember { FocusRequester() }
-    val menuFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val dismissKeyboard = {
@@ -289,7 +291,7 @@ private fun AdminDialogs(
             verifyingPin = false
             pin = ""
             if (valid) {
-                onScreenChange(AdminScreen.MENU)
+                onUnlocked()
             } else {
                 pinError = "Incorrect PIN"
                 requestPinFocus()
@@ -301,7 +303,6 @@ private fun AdminDialogs(
     LaunchedEffect(screen) {
         when (screen) {
             AdminScreen.PIN -> requestPinFocus()
-            AdminScreen.MENU -> menuFocus.requestFocus()
             AdminScreen.NONE -> Unit
         }
     }
@@ -334,7 +335,8 @@ private fun AdminDialogs(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .focusRequester(pinFocus),
+                            .focusRequester(pinFocus)
+                            .otsFocusHighlight(MaterialTheme.shapes.small),
                         label = { Text("Admin PIN") },
                         isError = pinError != null,
                         supportingText = pinError?.let { message -> ({ Text(message) }) },
@@ -355,59 +357,15 @@ private fun AdminDialogs(
                     pin = ""
                     pinError = null
                     onScreenChange(AdminScreen.NONE)
-                }) { Text("Cancel") }
+                }, modifier = Modifier.otsFocusHighlight()) { Text("Cancel") }
                 Button(
                     enabled = !verifyingPin,
-                    modifier = Modifier.height(48.dp),
+                    modifier = Modifier
+                        .height(48.dp)
+                        .otsFocusHighlight(),
                     shape = MaterialTheme.shapes.medium,
                     onClick = { submitPin() }
                 ) { Text(if (verifyingPin) "Checking…" else "Unlock") }
-            }
-        )
-        AdminScreen.MENU -> KioskDialog(
-            onDismissRequest = { onScreenChange(AdminScreen.NONE) },
-            title = {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AdminBrandLabel("OTS / ADMIN")
-                    Text("Kiosk controls", style = MaterialTheme.typography.headlineMedium)
-                }
-            },
-            content = {
-                Column(
-                    modifier = Modifier.padding(vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        "Configuration is unlocked for this session.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Button(
-                        onClick = onSettings,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(menuFocus)
-                            .height(52.dp),
-                        shape = MaterialTheme.shapes.medium
-                    ) {
-                        Text("Settings")
-                    }
-                    OutlinedButton(
-                        onClick = onExit,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = MaterialTheme.shapes.medium,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text("Exit Kiosk")
-                    }
-                }
-            },
-            actions = {
-                TextButton(onClick = { onScreenChange(AdminScreen.NONE) }) { Text("Cancel") }
             }
         )
     }

@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.os.Build
+import android.view.View
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
@@ -32,6 +34,7 @@ import com.ontimestack.webkiosk.app.WebViewManager
 fun WebViewComponent(
     url: String,
     activity: MainActivity,
+    interactive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -94,8 +97,20 @@ fun WebViewComponent(
     Box(modifier = modifier.background(Color.Black)) {
         key(renderGeneration) {
             AndroidView(
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .focusProperties { canFocus = interactive },
                 factory = { webViewManager.createWebView() },
+                update = { webView ->
+                    webView.isFocusable = interactive
+                    webView.isFocusableInTouchMode = interactive
+                    webView.importantForAccessibility = if (interactive) {
+                        View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    } else {
+                        View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                    }
+                    if (!interactive) webView.clearFocus()
+                },
                 onRelease = { webViewManager.destroy(it) }
             )
         }

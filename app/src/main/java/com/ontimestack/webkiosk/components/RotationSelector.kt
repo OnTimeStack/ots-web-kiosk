@@ -28,7 +28,8 @@ fun RotationSelector(rotation: Rotation, onRotationChange: (Rotation) -> Unit) {
                 shape = MaterialTheme.shapes.medium,
                 modifier = Modifier
                     .weight(1f)
-                    .height(56.dp),
+                    .height(56.dp)
+                    .otsFocusHighlight(),
                 border = BorderStroke(
                     1.dp,
                     if (selected) MaterialTheme.colorScheme.primary

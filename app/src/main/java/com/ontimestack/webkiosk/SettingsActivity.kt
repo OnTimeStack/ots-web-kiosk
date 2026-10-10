@@ -1,5 +1,6 @@
 package com.ontimestack.webkiosk
 
+import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,6 +19,7 @@ import com.ontimestack.webkiosk.ui.theme.OtsSettingsTheme
 
 class SettingsActivity : ComponentActivity() {
     private var pendingRotation: Rotation? = null
+    private var activeRotation = Rotation.ROTATION_0
     private var orientationNotice by mutableStateOf<String?>(null)
     private val requestSystemSettingsAccess = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -31,10 +33,8 @@ class SettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         KioskRuntime.adminMode = true
         val firstRun = intent.getBooleanExtra(EXTRA_FIRST_RUN, false)
-        ScreenOrientationController.apply(
-            this,
-            KioskSettingsFactory.get(this).rotation
-        )
+        activeRotation = KioskSettingsFactory.get(this).rotation
+        ScreenOrientationController.apply(this, activeRotation)
 
         if (firstRun) {
             onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -48,13 +48,23 @@ class SettingsActivity : ComponentActivity() {
                     firstRun = firstRun,
                     orientationNotice = orientationNotice,
                     onRotationChange = ::applyOrientation,
-                    onClose = ::finish
+                    onClose = ::finish,
+                    onExitKiosk = {
+                        setResult(RESULT_EXIT_KIOSK)
+                        finish()
+                    }
                 )
             }
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        ScreenOrientationController.apply(this, activeRotation)
+    }
+
     private fun applyOrientation(rotation: Rotation) {
+        activeRotation = rotation
         if (ScreenOrientationController.apply(this, rotation)) {
             orientationNotice = null
             return
@@ -77,6 +87,7 @@ class SettingsActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_FIRST_RUN = "first_run"
+        const val RESULT_EXIT_KIOSK = Activity.RESULT_FIRST_USER
         private const val ORIENTATION_PERMISSION_NOTICE =
             "Full-screen rotation on this Android TV requires one-time device provisioning. " +
                 "See the README setup command."
