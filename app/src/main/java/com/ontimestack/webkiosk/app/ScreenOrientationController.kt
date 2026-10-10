@@ -1,6 +1,7 @@
 package com.ontimestack.webkiosk.app
 
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
@@ -64,6 +65,25 @@ object ScreenOrientationController {
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
             !canWriteSystemSettings(activity)
 
+    /** Restores the landscape system rotation expected by Android TV launchers and settings. */
+    fun restoreTelevisionLandscape(context: Context): Boolean {
+        if (!context.isTelevision()) return true
+        if (!canWriteSystemSettings(context)) return false
+
+        val resolver = context.contentResolver
+        val sensorLocked = Settings.System.putInt(
+            resolver,
+            Settings.System.ACCELEROMETER_ROTATION,
+            0
+        )
+        val rotationReset = Settings.System.putInt(
+            resolver,
+            Settings.System.USER_ROTATION,
+            Rotation.ROTATION_0.toSystemRotation()
+        )
+        return sensorLocked && rotationReset
+    }
+
     fun createSystemSettingsAccessIntent(activity: Activity): Intent = Intent(
         Settings.ACTION_MANAGE_WRITE_SETTINGS,
         Uri.parse("package:${activity.packageName}")
@@ -76,11 +96,11 @@ object ScreenOrientationController {
         }
     }
 
-    private fun canWriteSystemSettings(activity: Activity): Boolean =
+    private fun canWriteSystemSettings(context: Context): Boolean =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Settings.System.canWrite(activity)
+            Settings.System.canWrite(context)
         } else {
-            activity.checkCallingOrSelfPermission(android.Manifest.permission.WRITE_SETTINGS) ==
+            context.checkCallingOrSelfPermission(android.Manifest.permission.WRITE_SETTINGS) ==
                 android.content.pm.PackageManager.PERMISSION_GRANTED
         }
 
@@ -99,7 +119,7 @@ object ScreenOrientationController {
         return sensorLocked && currentRotation == rotation.toSystemRotation()
     }
 
-    private fun Activity.isTelevision(): Boolean =
+    private fun Context.isTelevision(): Boolean =
         resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK ==
             Configuration.UI_MODE_TYPE_TELEVISION
 }

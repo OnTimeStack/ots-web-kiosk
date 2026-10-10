@@ -94,7 +94,7 @@ A imagem Google TV API 31 legada contém Android System WebView 91. O JavaScript
 
 ## Diagnóstico da integração Mizz
 
-A mensagem de falha ao iniciar o autoatendimento era gerada pelo `mizz-ui` quando `supabase.auth.signInAnonymously()` era rejeitado. O armazenamento local do WebView foi validado como funcional e não era a causa.
+A mensagem de falha ao iniciar o autoatendimento era gerada pelo `mizz-app` quando `supabase.auth.signInAnonymously()` era rejeitado. O armazenamento local do WebView foi validado como funcional e não era a causa.
 
 A configuração de produção foi corrigida em 2026-09-15. Anonymous Sign-Ins foi habilitado somente depois da aplicação de guardrails no banco e nas Server Actions. Um Auth Hook permite exclusivamente a criação anônima necessária ao kiosk e mantém cadastro permanente por autoatendimento bloqueado. Usuários anônimos não podem enumerar perfis, criar estabelecimentos, entrar em fluxos de equipe/admin ou usar uploads; checkout de kiosk continua exigindo a credencial revogável do dispositivo e o limite de requisições do servidor. O fluxo completo foi revalidado no AVD API 36/WebView 143 sem a mensagem de erro.
 

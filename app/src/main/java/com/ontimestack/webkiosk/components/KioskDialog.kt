@@ -2,6 +2,7 @@ package com.ontimestack.webkiosk.components
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,7 +15,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 
@@ -23,6 +26,7 @@ import androidx.compose.ui.unit.dp
  * together without the separate dialog window clipping a 90° or 270° transform.
  */
 @Composable
+@OptIn(ExperimentalComposeUiApi::class)
 fun KioskDialog(
     onDismissRequest: () -> Unit,
     title: @Composable () -> Unit,
@@ -40,7 +44,9 @@ fun KioskDialog(
         Surface(
             modifier = Modifier
                 .padding(24.dp)
-                .widthIn(max = 784.dp),
+                .widthIn(max = 784.dp)
+                .focusProperties { onExit = { cancelFocusChange() } }
+                .focusGroup(),
             color = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface,
             shape = MaterialTheme.shapes.extraLarge,
